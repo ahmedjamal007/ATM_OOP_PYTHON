@@ -59,7 +59,6 @@ class Transaction(ABC):
     def execute(self):
         pass
 
-
 class Withdrawal(Transaction):
     def __init__(self, transaction_id:int, timestamp:datetime, date:datetime, account:Account, amount:float):
         super().__init__(type="withdrawal",amount=amount, transaction_id=transaction_id, timestamp=timestamp, account=account)
@@ -73,7 +72,17 @@ class Withdrawal(Transaction):
         else:
             print("Insufficient funds for withdrawal.")
 
-    
+
+
+class Deposit(Transaction):
+    def __init__(self, transaction_id:int, timestamp:datetime, date:datetime, account:Account, amount:float):
+        super().__init__(type="deposit",amount=amount, transaction_id=transaction_id, timestamp=timestamp, account=account)
+
+    def execute(self):
+        self.account.balance += self.amount
+        self.account.add_transaction(self)
+        print(f"Deposit of {self.amount} successful. New balance: {self.account.balance}")  
+
 
     
 account1 = Account(account_number=123456, balance=1000.0, bank=None, linked_card=[])
