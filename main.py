@@ -62,7 +62,27 @@ class Atm():
         self.atm_id = atm_id
         self.location = location
         self.bank = bank
-
+    def transction_handle(self,account,answer,amount=None):
+        try:
+            match answer:
+                case 1:
+                    transaction = BalanceInquiryTransaction('BalanceInquiry',account)
+                    transaction.execute()
+                case 2:
+                    transaction = WithdrawalTransaction('Withdrawal',account,amount)
+                    transaction.execute()
+                case 3:
+                    transaction = DepositTransaction('Deposit',account,amount)
+                    transaction.execute()
+                case 4:
+                    print("transcation history:")
+                    for transaction in account.transactions:
+                        print(f"Transaction ID: {transaction.transaction_id}, Type: {transaction.type}, Amount: {transaction.amount}, Timestamp: {transaction.timestamp}")
+                case _:
+                    print("invalid choice")
+        except ValueError as e:
+            print(f"Invalid input: {e}")
+        
     def atm_menu(self,account):
         msg = f'''
             welcome {account.coustmer.name}
@@ -70,31 +90,25 @@ class Atm():
             ------
             1: check Balance
             2:withdaraw
-            3:transfer
-            4:deposit
-            5:show transcation
+            3:deposit
+            4:show transcation
+            5: exit
+            enter your choice:
             '''
-        print(msg)
-        answer = int(input('enter your choice: '))
-        if answer in range(1,5+1):
-            if answer == 1:
-               trans =  BalanceInquiry('b',account=account)
-               trans.execute()
-            if answer == 2:
-                amount = float(input('enter the amount: '))
-                WithdrawalTransaction(account,amount)
-            if answer == 3:
-                pass
-            if answer == 4:
-                amount = float(input('enter the amount: '))
-                DepositTransaction(amount)
-            if answer == 5:
-                for transaction in account.transactions:
-                    print(
-                        transaction.type , transaction.timpestamp , transaction.id
-                    )
+        exit = False
+        
+        while not exit:
+            answer = int(input(msg))
 
+            if answer == 5:
+                exit = True
+                print("exiting...")
+            else:
+                self.transction_handle(account,answer,amount=float(input("enter the amount:")) if answer in [2,3] else None)
             
+
+        
+                    
 
                 
     def insert_card(self,card:Card):
@@ -103,6 +117,7 @@ class Atm():
             self.atm_menu(account)
         else:
             print("acsess deny")
+
 
 
 class Transaction(ABC):
@@ -144,7 +159,7 @@ class DepositTransaction(Transaction):
         print(f"Deposit of {self.amount} successful. New balance: {self.account.balance}")
 
 
-class BalanceInquiry(Transaction):
+class BalanceInquiryTransaction(Transaction):
     def __init__(self, type:str, account:Account):
         super().__init__(type="balance_inquiry", account=account)
 
@@ -155,6 +170,7 @@ class BalanceInquiry(Transaction):
 bank = Bank('bank_khartum','76473sa732')
 cust1 = Customer('ahmed','bahri','092412323')
 account = Account('65731',2500.5,bank,cust1)
+
 bank.add_customer(cust1)
 cust1.add_account(account)
 card = Card('213231','0000')
