@@ -1,6 +1,14 @@
 from abc import ABC , abstractmethod 
 from datetime import datetime
-from unittest import case 
+from uuid import uuid4
+from enum import Enum
+import os
+class TransactionType(Enum):
+    WITHDRAWAL = "withdrawal"
+    DEPOSIT = "deposit"
+    TRANSFER = "transfer"
+    BALANCE_INQUIRY = "balance_inquiry"
+    TRANSACTION_HISTORY = "transaction_history"
 
 class Customer():
     def __init__(self, name, address, phone_number):
@@ -42,12 +50,19 @@ class Bank():
     def add_customer(self, customer:Customer):
         self.customers.append(customer)
 
-    def authenticate_card(self, card:Card):
+    def authenticate_card(self, pin:str):
         # Implement card authentication logic here
         for customer in self.customers:
             for account in customer.accounts:
-                if account.linked_card == card:
+                if account.linked_card.pin_code == pin:
                     return account
+                raise ValueError("Invalid PIN. Access denied.")
+    def get_account_by_number(self, number:str):
+        for customer in self.customers:
+            for account in customer.accounts:
+                if account.account_number == number:
+                    return account
+        raise ValueError("Account not found.")
 
 class Card():
 
@@ -55,34 +70,84 @@ class Card():
         self.card_number = card_number
         self.pin_code = pin_code
 
+
+class CardReader():
+
+    def __init__(self,card:Card,atm:Atm):
+        self.card = card
+        self.atm = atm
+
+    def insert_card(self,card:Card):
+        pin = input("enter your pin number")
+
+        account = self.atm.bank.authenticate_card(pin)
+        if account:
+            self.atm.atm_menu(account)
+        else:
+            print("acsess deny")
+
+class Screen():
     
+    def display_message(self,message:str):
+        print(message)
+
+
+    def clear_screen(self):
+        confirmation = input("press any key to continue...")
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+
+
+
 class Atm():
     
     def __init__(self, atm_id:int, location:str, bank:Bank):
         self.atm_id = atm_id
         self.location = location
         self.bank = bank
+        self.screen = Screen()
     def transction_handle(self,account,answer,amount=None):
         try:
             match answer:
                 case 1:
                     transaction = BalanceInquiryTransaction('BalanceInquiry',account)
                     transaction.execute()
+                    
+                    self.screen.clear_screen()
                 case 2:
                     transaction = WithdrawalTransaction('Withdrawal',account,amount)
                     transaction.execute()
+                    self.screen.clear_screen()
                 case 3:
                     transaction = DepositTransaction('Deposit',account,amount)
                     transaction.execute()
+                    self.screen.clear_screen()
                 case 4:
                     print("transcation history:")
                     for transaction in account.transactions:
-                        print(f"Transaction ID: {transaction.transaction_id}, Type: {transaction.type}, Amount: {transaction.amount}, Timestamp: {transaction.timestamp}")
+                        self.screen.display_message(f"Transaction ID: {transaction.transaction_id}, Type: {transaction.type}, Amount: {transaction.amount}, Timestamp: {transaction.timestamp}")
+                        self.screen.clear_screen()
+                case 5:
+                    recipient_account_number = input("Enter the recipient account number: ")
+                    recipient_account = self.bank.get_account_by_number(recipient_account_number)
+                    if recipient_account is None:
+                        self.screen.display_message("Recipient account not found.")
+                    else:
+                        # show msg to confirm the transfer with the recipient's name and account number
+                        confirmation = input(f"Are you sure you want to transfer {amount} to {recipient_account.coustmer.name} (Account Number: {recipient_account.account_number})? (yes/no): ")
+                        if confirmation.lower() != 'yes':
+                            self.screen.display_message("Transfer cancelled.")
+                            return
+                        transaction = TransferTransaction('Transfer',account,amount,recipient_account=recipient_account)
+                        transaction.execute()
+                        self.screen.clear_screen()
                 case _:
-                    print("invalid choice")
+                    self.screen.display_message("Invalid choice. Please try again.")
+                    self.screen.clear_screen()
         except ValueError as e:
-            print(f"Invalid input: {e}")
-        
+            self.screen.display_message(f"Invalid input: {e}")
+            self.screen.clear_screen()
+
     def atm_menu(self,account):
         msg = f'''
             welcome {account.coustmer.name}
@@ -92,40 +157,26 @@ class Atm():
             2:withdaraw
             3:deposit
             4:show transcation
-            5: exit
-            enter your choice:
-            '''
+            5:transfer_transction
+            6: exit
+            enter your choice: '''
         exit = False
         
         while not exit:
             answer = int(input(msg))
-
-            if answer == 5:
+            if answer == 6:
                 exit = True
-                print("exiting...")
+                self.screen.display_message("exiting...")
             else:
-                self.transction_handle(account,answer,amount=float(input("enter the amount:")) if answer in [2,3] else None)
+                self.transction_handle(account,answer,amount=float(input("enter the amount:")) if answer in [2,3,5] else None)
             
-
-        
-                    
-
-                
-    def insert_card(self,card:Card):
-        account = self.bank.authenticate_card(card)
-        if account:
-            self.atm_menu(account)
-        else:
-            print("acsess deny")
 
 
 
 class Transaction(ABC):
 
-    transaction_id_counter = 0
-
     def __init__(self, type:str, account:Account, amount:float = None):
-        self.transaction_id = self.transaction_id_counter + 1
+        self.transaction_id = uuid4()
         self.timestamp = datetime.now()
         self.type = type
         self.account = account
@@ -138,42 +189,67 @@ class Transaction(ABC):
 
 class WithdrawalTransaction(Transaction):
     def __init__(self, type:str, account:Account, amount:float):
-        super().__init__(type="withdrawal", account=account, amount=amount)
+        super().__init__(TransactionType.WITHDRAWAL, account=account, amount=amount)
 
-    def execute(self):
-        if self.account.balance >= self.amount:
-            self.account.balance -= self.amount
-            self.account.add_transaction(self)
-            print(f"Withdrawal of {self.amount} successful. New balance: {self.account.balance}")
+    def execute(self,call_back = False ):
+        self.account.balance -= self.amount
+        if call_back:
+            pass
         else:
-            print("Insufficient funds for withdrawal.")
+            self.account.add_transaction(self)
+            return True
+
+        return False
 
 
 class DepositTransaction(Transaction):
     def __init__(self, type:str, account:Account, amount:float):
-        super().__init__(type="deposit", account=account, amount=amount)
+        super().__init__(TransactionType.DEPOSIT, account=account, amount=amount)
 
-    def execute(self):
+    def execute(self,call_back = False ):
         self.account.balance += self.amount
-        self.account.add_transaction(self)
-        print(f"Deposit of {self.amount} successful. New balance: {self.account.balance}")
+        if call_back:
+            pass
+        else:
+            self.account.add_transaction(self)
+        self.screen.display_message(f"Deposit of {self.amount} successful. New balance: {self.account.balance}")
 
 
 class BalanceInquiryTransaction(Transaction):
     def __init__(self, type:str, account:Account):
-        super().__init__(type="balance_inquiry", account=account)
+        super().__init__(TransactionType.BALANCE_INQUIRY, account=account)
 
     def execute(self):
         print(f"Current balance: {self.account.balance}")
 
 
+
+class TransferTransaction(Transaction):
+    def __init__(self, type:str, account:Account, amount:float, recipient_account:Account):
+        super().__init__(TransactionType.TRANSFER, account=account, amount=amount)
+        self.recipient_account = recipient_account
+
+    def execute(self):
+        Withdrawal = WithdrawalTransaction(TransactionType.WITHDRAWAL, self.account, self.amount)
+        transaction_successful = Withdrawal.execute(call_back=True)
+        if transaction_successful:
+            Deposit = DepositTransaction(TransactionType.DEPOSIT, self.recipient_account, self.amount)
+            Deposit.execute(call_back=True)
+            self.account.add_transaction(self)
+            self.recipient_account.add_transaction(self)
+            return True
+
 bank = Bank('bank_khartum','76473sa732')
 cust1 = Customer('ahmed','bahri','092412323')
+cust2 = Customer('ali','bahri','092412323')
 account = Account('65731',2500.5,bank,cust1)
-
+account2 = Account('65732',2500.5,bank,cust1)
+cust2.add_account(account2)
+account2.link_card(Card('213232','0000'))
 bank.add_customer(cust1)
 cust1.add_account(account)
 card = Card('213231','0000')
 account.link_card(card)
 atm = Atm(1,'bahri',bank)
-atm.insert_card(card)
+c = CardReader(card,atm)
+c.insert_card(card)
