@@ -3,6 +3,7 @@ from datetime import datetime
 from uuid import uuid4
 from enum import Enum
 import os
+from pymupdf import message
 class TransactionType(Enum):
     WITHDRAWAL = "withdrawal"
     DEPOSIT = "deposit"
@@ -16,10 +17,10 @@ class Customer():
         self.name = name
         self.address = address
         self.phone_number = phone_number
-        self.accounts = []
+        self.accounts = {}
 
     def add_account(self, account):
-        self.accounts.append(account)
+        self.accounts[account.account_number] = account
 
 class Account():
     transactions_number = 0
@@ -39,36 +40,46 @@ class Account():
     def link_card(self, card:Card):
         self.linked_card = card
 
+class authentication():
+    
+    def __init__(self, bank:Bank):
+        self.bank = bank
+
+    def authenticate_card(self, pin:str):
+        for account in self.bank.accounts.values():
+            if account.linked_card and account.linked_card.get_pin_code() == pin:
+                return account
+        return None
     
 class Bank():
 
     def __init__(self,name,swift_code):
         self.name = name
         self.swift_code = swift_code
-        self.customers = []
+        self.accounts = {}
 
     def add_customer(self, customer:Customer):
-        self.customers.append(customer)
+        for account in customer.accounts.values():
+            self.accounts[account.account_number] = account
 
-    def authenticate_card(self, pin:str):
-        # Implement card authentication logic here
-        for customer in self.customers:
-            for account in customer.accounts:
-                if account.linked_card.pin_code == pin:
-                    return account
-                raise ValueError("Invalid PIN. Access denied.")
     def get_account_by_number(self, number:str):
-        for customer in self.customers:
-            for account in customer.accounts:
-                if account.account_number == number:
-                    return account
-        raise ValueError("Account not found.")
+        return self.accounts.get(number)
 
 class Card():
 
     def __init__(self,card_number:int,pin_code:int):
         self.card_number = card_number
-        self.pin_code = pin_code
+        self.__pin_code = pin_code
+
+    def get_pin_code(self):
+        return self.__pin_code
+        
+
+    def rest_pin_code(self,old_pin, new_pin):
+        if self.__pin_code == old_pin:
+            self.__pin_code = new_pin
+            return True
+        return False
 
 
 class CardReader():
@@ -76,11 +87,12 @@ class CardReader():
     def __init__(self,card:Card,atm:Atm):
         self.card = card
         self.atm = atm
+        self.authentication = authentication(atm.bank)
 
     def insert_card(self,card:Card):
         pin = input("enter your pin number")
 
-        account = self.atm.bank.authenticate_card(pin)
+        account = self.authentication.authenticate_card(pin)
         if account:
             self.atm.atm_menu(account)
         else:
@@ -88,15 +100,62 @@ class CardReader():
 
 class Screen():
     
-    def display_message(self,message:str):
-        print(message)
-
-
     def clear_screen(self):
         confirmation = input("press any key to continue...")
         os.system('cls' if os.name == 'nt' else 'clear')
 
+    def display_message(self,message:str):
+            print(message)
+            self.clear_screen()
 
+
+
+class WithdarawlHandler():
+    def __init__(self , amount,account:Account):
+        self.amount = amount
+        self.screen = Screen()
+        self.account = account
+
+
+    def transaction_handler(self):
+        try:
+            if self.amount <= 0:
+                self.screen.display_message("your balance is zero you cant witdarwal please dopsit some mony and try agin..")
+            else:
+                transaction = WithdrawalTransaction('withdarwal',self.account,self.amount)
+                transaction.execute()
+                self.screen.display_message(f"withdarwal sucess your new blance is {self.account.balance}")
+        except ValueError as e:
+            self.screen.display_message(e)
+
+class BalanceInquiryHandle():
+    def __init__(self,account):
+        self.screen = Screen()
+        self.account = account 
+
+    def transaction_handler(self):
+        transaction = BalanceInquiryTransaction('BalanceInquiryTransaction',self.account)
+        self.screen.display_message(transaction.execute())
+
+    
+
+class DepositHandle():
+    def __init__(self,account,amount):
+        self.screen = Screen()
+        self.account = account
+        self.amount = amount
+
+    def transction_handle(self):
+        transaction = DepositTransaction('Deposit',self.account,self.amount)
+        sucsess = transaction.execute()
+        self.screen.display_message(sucsess)
+
+
+
+
+
+class TransferHandle():
+    pass
 
 
 class Atm():
@@ -106,22 +165,18 @@ class Atm():
         self.location = location
         self.bank = bank
         self.screen = Screen()
-    def transction_handle(self,account,answer,amount=None):
+    def transction_handle(self,account:Account,answer,amount=None):
         try:
             match answer:
                 case 1:
-                    transaction = BalanceInquiryTransaction('BalanceInquiry',account)
-                    transaction.execute()
-                    
-                    self.screen.clear_screen()
+                    transaction = BalanceInquiryHandle(account)
+                    transaction.transaction_handler()
                 case 2:
-                    transaction = WithdrawalTransaction('Withdrawal',account,amount)
-                    transaction.execute()
-                    self.screen.clear_screen()
+                    transaction = WithdarawlHandler(amount,account)
+                    transaction.transaction_handler()
                 case 3:
-                    transaction = DepositTransaction('Deposit',account,amount)
-                    transaction.execute()
-                    self.screen.clear_screen()
+                    transaction = DepositHandle(account,amount)
+                    transaction.transction_handle()
                 case 4:
                     print("transcation history:")
                     for transaction in account.transactions:
@@ -141,6 +196,15 @@ class Atm():
                         transaction = TransferTransaction('Transfer',account,amount,recipient_account=recipient_account)
                         transaction.execute()
                         self.screen.clear_screen()
+                case 6: #change_pin
+                    self.screen.display_message("\nPassword Change press enter to countiune")
+                    old_pin = input("enter the old pin:")
+                    new_pin = input("enter the new pin:")
+                    new_pin_confirm = input("confirm the new pin:")
+                    if new_pin == new_pin_confirm and len(new_pin) > 3:
+                        card = account.linked_card.rest_pin_code(old_pin,new_pin)
+                    else:
+                        self.screen.display_message("the new pin is short or the new pin and confirmation not the same try agin..")
                 case _:
                     self.screen.display_message("Invalid choice. Please try again.")
                     self.screen.clear_screen()
@@ -158,13 +222,14 @@ class Atm():
             3:deposit
             4:show transcation
             5:transfer_transction
-            6: exit
+            6: change pin
+            7:exit
             enter your choice: '''
         exit = False
         
         while not exit:
             answer = int(input(msg))
-            if answer == 6:
+            if answer == 7:
                 exit = True
                 self.screen.display_message("exiting...")
             else:
@@ -212,7 +277,7 @@ class DepositTransaction(Transaction):
             pass
         else:
             self.account.add_transaction(self)
-        self.screen.display_message(f"Deposit of {self.amount} successful. New balance: {self.account.balance}")
+        return f"Deposit of {self.amount} successful. New balance: {self.account.balance}"
 
 
 class BalanceInquiryTransaction(Transaction):
@@ -220,7 +285,7 @@ class BalanceInquiryTransaction(Transaction):
         super().__init__(TransactionType.BALANCE_INQUIRY, account=account)
 
     def execute(self):
-        print(f"Current balance: {self.account.balance}")
+        return f"Current balance: {self.account.balance}"
 
 
 
@@ -239,17 +304,13 @@ class TransferTransaction(Transaction):
             self.recipient_account.add_transaction(self)
             return True
 
-bank = Bank('bank_khartum','76473sa732')
-cust1 = Customer('ahmed','bahri','092412323')
-cust2 = Customer('ali','bahri','092412323')
-account = Account('65731',2500.5,bank,cust1)
-account2 = Account('65732',2500.5,bank,cust1)
-cust2.add_account(account2)
-account2.link_card(Card('213232','0000'))
-bank.add_customer(cust1)
-cust1.add_account(account)
-card = Card('213231','0000')
-account.link_card(card)
-atm = Atm(1,'bahri',bank)
-c = CardReader(card,atm)
-c.insert_card(card)
+bank = Bank("MyBank", "SWIFT123")
+c = Customer("John Doe", "123 Main St", "555-1234")
+account1 = Account(1001, 5000.0, bank,c)
+c.add_account(account1)
+case = Card(1234567890, "1234")
+account1.link_card(case)
+atm = Atm(1, "Main Street", bank)
+bank.add_customer(c)
+card_reader = CardReader(case, atm)
+card_reader.insert_card(case)
