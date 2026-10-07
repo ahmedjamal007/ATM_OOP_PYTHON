@@ -40,16 +40,29 @@ class Account():
     def link_card(self, card:Card):
         self.linked_card = card
 
-class authentication():
+class Authentication():
     
     def __init__(self, bank:Bank):
         self.bank = bank
+        self.screen = Screen()
 
     def authenticate_card(self, pin:str):
         for account in self.bank.accounts.values():
             if account.linked_card and account.linked_card.get_pin_code() == pin:
                 return account
         return None
+
+    def change_pin_number(self,account:Account):
+        self.screen.display_message("\nPassword Change press enter to countiune")
+        old_pin = input("enter the old pin:")
+        new_pin = input("enter the new pin:")
+        new_pin_confirm = input("confirm the new pin:")
+        if new_pin == new_pin_confirm and len(new_pin) > 3:
+             account.linked_card.rest_pin_code(old_pin,new_pin)
+             self.screen.display_message("your pin is changed...")
+        else:
+            self.screen.display_message("the new pin is short or the new pin and confirmation not the same try agin..")
+    
     
 class Bank():
 
@@ -87,12 +100,13 @@ class CardReader():
     def __init__(self,card:Card,atm:Atm):
         self.card = card
         self.atm = atm
-        self.authentication = authentication(atm.bank)
+        self.bank = atm.bank
+        self.Authentication = Authentication(self.bank)
 
     def insert_card(self,card:Card):
         pin = input("enter your pin number")
 
-        account = self.authentication.authenticate_card(pin)
+        account = self.Authentication.authenticate_card(pin)
         if account:
             self.atm.atm_menu(account)
         else:
@@ -155,7 +169,27 @@ class DepositHandle():
 
 
 class TransferHandle():
-    pass
+    def __init__(self,amount:float,account:Account):
+        self.recipient_account = input("enter the recipient_account number:.. ")
+        self.screen = Screen()
+        self.amount = amount 
+        self.account = account
+
+    def transction_handelr(self):
+            recipient_account_number = self.account.bank.get_account_by_number(self.recipient_account)
+            if recipient_account_number is None:
+                self.screen.display_message("Recipient account not found.")
+            else:
+                confirmation = input(f"Are you sure you want to transfer {self.amount} to {self.recipient_account.coustmer.name} (Account Number: {self.recipient_account.account_number})? (yes/no): ")
+                if confirmation.lower() != 'yes':
+                    self.screen.display_message("Transfer cancelled.")
+                    return
+                transaction = TransferTransaction('Transfer',self.account,self.amount,self.recipient_account)
+                sucsess = transaction.execute()
+                if sucsess == True:
+                    self.screen.display_message("transfer sucsess")
+    
+
 
 
 class Atm():
@@ -165,6 +199,7 @@ class Atm():
         self.location = location
         self.bank = bank
         self.screen = Screen()
+        self.authentication = Authentication(bank)
     def transction_handle(self,account:Account,answer,amount=None):
         try:
             match answer:
@@ -183,28 +218,10 @@ class Atm():
                         self.screen.display_message(f"Transaction ID: {transaction.transaction_id}, Type: {transaction.type}, Amount: {transaction.amount}, Timestamp: {transaction.timestamp}")
                         self.screen.clear_screen()
                 case 5:
-                    recipient_account_number = input("Enter the recipient account number: ")
-                    recipient_account = self.bank.get_account_by_number(recipient_account_number)
-                    if recipient_account is None:
-                        self.screen.display_message("Recipient account not found.")
-                    else:
-                        # show msg to confirm the transfer with the recipient's name and account number
-                        confirmation = input(f"Are you sure you want to transfer {amount} to {recipient_account.coustmer.name} (Account Number: {recipient_account.account_number})? (yes/no): ")
-                        if confirmation.lower() != 'yes':
-                            self.screen.display_message("Transfer cancelled.")
-                            return
-                        transaction = TransferTransaction('Transfer',account,amount,recipient_account=recipient_account)
-                        transaction.execute()
-                        self.screen.clear_screen()
+                    transfer = TransferHandle(amount,account)
+                    transfer.transction_handelr()
                 case 6: #change_pin
-                    self.screen.display_message("\nPassword Change press enter to countiune")
-                    old_pin = input("enter the old pin:")
-                    new_pin = input("enter the new pin:")
-                    new_pin_confirm = input("confirm the new pin:")
-                    if new_pin == new_pin_confirm and len(new_pin) > 3:
-                        card = account.linked_card.rest_pin_code(old_pin,new_pin)
-                    else:
-                        self.screen.display_message("the new pin is short or the new pin and confirmation not the same try agin..")
+                    self.authentication.change_pin_number(account)
                 case _:
                     self.screen.display_message("Invalid choice. Please try again.")
                     self.screen.clear_screen()
