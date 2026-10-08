@@ -6,6 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from keypad import Keypad
 from screen import Screen
 
 if TYPE_CHECKING:
@@ -123,8 +124,9 @@ class DepositHandle():
 
 class TransferHandle():
     def __init__(self, amount: float, account: Account):
-        self.recipient_account_number = input("enter the recipient_account number:.. ")
+        self.keypad = Keypad()
         self.screen = Screen()
+        self.recipient_account_number = self.keypad.get_input("enter the recipient_account number:.. ")
         self.amount = amount
         self.account = account
 
@@ -133,7 +135,7 @@ class TransferHandle():
         if recipient_account is None:
             self.screen.display_message("Recipient account not found.")
             return
-        confirmation = input(
+        confirmation = self.keypad.get_input(
             f"Are you sure you want to transfer {self.amount} to {recipient_account.coustmer.name} "
             f"(Account Number: {recipient_account.account_number})? (yes/no): "
         )

@@ -9,6 +9,7 @@ from Transaction import (
     WithdarawlHandler,
 )
 from authentication import Authentication
+from keypad import Keypad
 from screen import Screen
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ class AtmInterFace():
         self.location = location
         self.bank = bank
         self.screen = Screen()
+        self.keypad = Keypad()
         self.authentication = Authentication(bank)
 
     def transction_handle(self, account: Account, answer, amount=None):
@@ -69,7 +71,7 @@ class AtmInterFace():
 
         while not exit:
             try:
-                answer = int(input(msg))
+                answer = int(self.keypad.get_input(msg))
             except ValueError:
                 self.screen.display_message("Invalid choice. Please try again.")
                 continue
@@ -79,7 +81,7 @@ class AtmInterFace():
                 self.screen.display_message("exiting...")
             else:
                 try:
-                    amount = float(input("enter the amount:")) if answer in [2, 3, 5] else None
+                    amount = float(self.keypad.get_input("enter the amount:")) if answer in [2, 3, 5] else None
                 except ValueError:
                     self.screen.display_message("Invalid amount. Please try again.")
                     continue
@@ -92,10 +94,11 @@ class CardReader():
         self.card = card
         self.atm = atm
         self.bank = atm.bank
+        self.keypad = Keypad()
         self.authentication = Authentication(self.bank)
 
     def insert_card(self, card: Card):
-        pin = input("enter your pin number")
+        pin = self.keypad.get_input("enter your pin number", secure=True)
 
         account = self.authentication.authenticate_card(pin)
         if account:
